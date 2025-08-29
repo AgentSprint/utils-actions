@@ -3,36 +3,87 @@ description: "Dispatch a GitHub Actions workflow (supports cross-repo)."
 author: "AgentSprint"
 
 inputs:
-  repo_name:
+  owner:
+    description: "Repo owner/org (defaults to caller's org)"
+    required: false
+    default: ""
+  repo:
     description: "Repository name (e.g. infra-azure)"
     required: true
-  workflow_name:
-    description: "Workflow name (e.g. new_infra)"
+  workflow_file:
+    description: "Workflow file name or path (e.g. new_infra.yml or .github/workflows/new_infra.yml)"
     required: true
-  branch_name:
-    description: "Branch name (e.g. main)"
+  ref:
+    description: "Git ref/branch to run on (e.g. main)"
     required: true
-  inputs:
-    description: "Comment body (Markdown supported)"
+  payload_json:
+    description: "JSON object for workflow_dispatch inputs (e.g. {\"client_code\":\"x\",\"location\":\"y\"})"
     required: true
   token:
-    description: "GitHub token (optional). Omit to use the caller's GITHUB_TOKEN."
+    description: "GitHub token (optional). If blank, uses the caller's GITHUB_TOKEN."
     required: false
     default: ""
 
 runs:
   using: "composite"
   steps:
-    - name: workflows dispatches
+    - name: Dispatch workflow via API
       shell: bash
       env:
-        AUTH_TOKEN: ${{ inputs.token != '' && inputs.token || github.token }}
+        IN_OWNER:      ${{ inputs.owner }}
+        IN_REPO:       ${{ inputs.repo }}
+        IN_WORKFLOW:   ${{ inputs.workflow_file }}
+        IN_REF:        ${{ inputs.ref }}
+        IN_PAYLOAD:    ${{ inputs.payload_json }}
+        IN_TOKEN:      ${{ inputs.token }}
+        CALLER_TOKEN:  ${{ github.token }}
+        CALLER_OWNER:  ${{ github.repository_owner }}
       run: |
         set -euo pipefail
-        curl -sS -f -L \
-        -X POST \
-        -H "Accept: application/vnd.github+json" \
-        -H "Authorization: Bearer ${AUTH_TOKEN}" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        https://api.github.com/repos/AgentSprint/${{ inputs.repo_name }}/actions/workflows/${{ inputs.workflow_name }}.yml/dispatches \
-        -d "{\"ref\":\"${{ inputs.branch_name }}\",\"inputs\":${{ inputs.inputs }}}"
+
+        OWNER="${IN_OWNER:-$CALLER_OWNER}"
+        REPO="${IN_REPO}"
+        WORKFLOW="${IN_WORKFLOW}"
+        REF="${IN_REF}"
+        TOKEN="${IN_TOKEN:-$CALLER_TOKEN}"
+        PAYLOAD="${IN_PAYLOAD}"
+
+        # If only a bare filename was given, leave it; API accepts either filename or full path.
+        URL="https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches"
+
+        # Validate JSON payload early so we fail with a clear message.
+        python - <<'PY'
+import json, os, sys
+payload = os.environ["PAYLOAD"]
+try:
+    obj = json.loads(payload)
+    if not isinstance(obj, dict):
+        print("payload_json must be a JSON object, got:", type(obj).__name__)
+        sys.exit(1)
+except Exception as e:
+    print("Invalid payload_json:", e)
+    sys.exit(1)
+PY
+
+        # Build and send the request; print error bodies on failure.
+        # Use --fail-with-body when available, otherwise capture status.
+        if curl --help all 2>/dev/null | grep -q -- '--fail-with-body'; then
+          curl --fail-with-body -sS -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${URL}" \
+            -d "{\"ref\":\"${REF}\",\"inputs\":${PAYLOAD}}"
+        else
+          resp="$(curl -sS -L -w '\n%{http_code}' \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${URL}" \
+            -d "{\"ref\":\"${REF}\",\"inputs\":${PAYLOAD}}")"
+          code="${resp##*$'\n'}"; body="${resp%$'\n'$code}"
+          echo "$body"
+          test "$code" -lt 400
+        fi
