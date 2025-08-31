@@ -1,4 +1,4 @@
-name: "Open Pull Request"
+name: "Create Pull Request"
 description: "Create a pull request on GitHub."
 author: "AgentSprint"
 
@@ -30,7 +30,8 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: pull request open
+    - name: pull request Create
+      id: create_pull_request
       shell: bash
       env:
         AUTH_TOKEN: ${{ inputs.token != '' && inputs.token || github.token }}
