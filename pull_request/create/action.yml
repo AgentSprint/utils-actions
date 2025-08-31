@@ -3,6 +3,12 @@ description: "Create a pull request on GitHub."
 author: "AgentSprint"
 
 inputs:
+  owner:
+    description: "GitHub repository owner"
+    required: true
+  repo:
+    description: "GitHub repository name"
+    required: true
   title:
     description: "Pull request title"
     required: true
@@ -19,6 +25,7 @@ inputs:
     description: "GitHub token (optional). Omit to use the caller's GITHUB_TOKEN."
     required: false
     default: ""
+
 
 runs:
   using: "composite"
