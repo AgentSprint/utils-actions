@@ -12,7 +12,7 @@ inputs:
   pr_number:
     description: "Pull request number"
     required: true
-  issue_url:
+  issue_api_url:
     description: "URL of the issue to link to the pull request"
     required: true
   client_name:
@@ -48,9 +48,9 @@ runs:
           --arg cn "${{ inputs.client_name }}" \
           --arg cc "${{ inputs.client_code }}" \
           --arg loc "${{ inputs.location }}" \
-          --arg iu "${{ inputs.issue_url }}" \
+          --arg iu "${{ inputs.issue_api_url }}" \
           --arg tf "${{ inputs.tfvars_filepath }}" \
-          '{labels: ["client_name:"+$cn, "client_code:"+$cc, "location:"+$loc, "issue_url:"+$iu, "tfvars_filepath:"+$tf]}')
+          '{labels: ["client_name:"+$cn, "client_code:"+$cc, "location:"+$loc, "issue_api_url:"+$iu, "tfvars_filepath:"+$tf]}')
 
         # Add labels to the PR (PRs use the Issues labels endpoint)
         curl -sS -f -L \
